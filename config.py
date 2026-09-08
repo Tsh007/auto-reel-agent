@@ -81,8 +81,7 @@ TTS_VOICE: str = _optional("TTS_VOICE", "en-US-AriaNeural")
 # ---------------------------------------------------------------------------
 # Instagram Graph API
 # ---------------------------------------------------------------------------
-IG_API_VERSION: str = "v26.0"
-IG_API_BASE: str = f"https://graph.facebook.com/{IG_API_VERSION}"
+IG_API_BASE: str = f"https://graph.instagram.com/{IG_API_VERSION}"
 
 # ---------------------------------------------------------------------------
 # Gemini model

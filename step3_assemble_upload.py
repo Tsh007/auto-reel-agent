@@ -331,10 +331,10 @@ def upload_to_tmpfiles(video_path: Path) -> str:
 
 
 def _ig_post(endpoint: str, payload: dict[str, Any]) -> dict[str, Any]:
-    """POST to the Instagram Graph API; raise on error."""
+    """POST to the Instagram API; raise on error."""
     url = f"{IG_API_BASE}/{endpoint}"
     payload["access_token"] = IG_ACCESS_TOKEN
-    resp = requests.post(url, json=payload, timeout=120)
+    resp = requests.post(url, data=payload, timeout=120)
 
     try:
         data = resp.json()
