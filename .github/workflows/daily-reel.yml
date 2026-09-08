@@ -1,0 +1,144 @@
+name: Daily Auto-Reel
+
+on:
+  schedule:
+    # Run every day at 00:00 UTC
+    - cron: "0 0 * * *"
+  # Allow manual triggering for testing
+  workflow_dispatch:
+
+# Cancel any in-progress run if a new one is triggered
+concurrency:
+  group: daily-reel
+  cancel-in-progress: true
+
+env:
+  PYTHON_VERSION: "3.11"
+  OUTPUT_DIR: output
+
+jobs:
+  # ──────────────────────────────────────────────────────────────────────────
+  # Job 1: Generate trending script via Gemini
+  # ──────────────────────────────────────────────────────────────────────────
+  generate-script:
+    name: "Stage 1 · Trend & Script Generation"
+    runs-on: ubuntu-latest
+    outputs:
+      script-artifact: script-json
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python ${{ env.PYTHON_VERSION }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+
+      - name: Install Stage 1 dependencies
+        run: pip install --upgrade google-generativeai
+
+      - name: Run Stage 1 – Trend & Script Generation
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          # Dummy values for config.py imports (not used in step 1)
+          IG_USER_ID: "placeholder"
+          IG_ACCESS_TOKEN: "placeholder"
+        run: python step1_trend_script.py
+
+      - name: Upload script artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: script-json
+          path: output/script.json
+          retention-days: 1
+
+  # ──────────────────────────────────────────────────────────────────────────
+  # Job 2: Generate AI images via Pollinations.ai
+  # ──────────────────────────────────────────────────────────────────────────
+  generate-images:
+    name: "Stage 2 · AI Image Generation"
+    runs-on: ubuntu-latest
+    needs: generate-script
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python ${{ env.PYTHON_VERSION }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+
+      - name: Download script artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: script-json
+          path: output
+
+      - name: Install Stage 2 dependencies
+        run: pip install --upgrade requests Pillow
+
+      - name: Run Stage 2 – AI Image Generation
+        env:
+          # Dummy values for config.py imports (not used in step 2)
+          GEMINI_API_KEY: "placeholder"
+          IG_USER_ID: "placeholder"
+          IG_ACCESS_TOKEN: "placeholder"
+        run: python step2_generate_images.py
+
+      - name: Upload images + updated script artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: images-and-script
+          path: output/
+          retention-days: 1
+
+  # ──────────────────────────────────────────────────────────────────────────
+  # Job 3: TTS + video assembly + Instagram upload
+  # ──────────────────────────────────────────────────────────────────────────
+  assemble-and-upload:
+    name: "Stage 3 · Video Assembly & Instagram Upload"
+    runs-on: ubuntu-latest
+    needs: generate-images
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python ${{ env.PYTHON_VERSION }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+
+      - name: Install FFmpeg
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y ffmpeg fonts-dejavu
+
+      - name: Download images + script artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: images-and-script
+          path: output
+
+      - name: Install Stage 3 dependencies
+        run: pip install --upgrade edge-tts pydub requests
+
+      - name: Run Stage 3 – Assemble & Upload
+        env:
+          GEMINI_API_KEY: "placeholder"
+          IG_USER_ID: ${{ secrets.IG_USER_ID }}
+          IG_ACCESS_TOKEN: ${{ secrets.IG_ACCESS_TOKEN }}
+        run: python step3_assemble_upload.py
+
+      - name: Upload final reel artifact (for inspection)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: final-reel
+          path: output/reel.mp4
+          retention-days: 7
