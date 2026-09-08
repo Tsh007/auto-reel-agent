@@ -98,6 +98,7 @@ def generate_script(client: genai.Client, retries: int = 3) -> dict[str, Any]:
         top_k=40,
         max_output_tokens=2048,
         response_mime_type="application/json",
+        automatic_function_calling=types.AutomaticFunctionCallingConfig(disable=True),
     )
 
     for attempt in range(1, retries + 1):
