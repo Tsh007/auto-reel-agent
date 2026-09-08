@@ -295,68 +295,37 @@ def concatenate_segments(segment_paths: list[Path], output: str = FINAL_VIDEO) -
 # ---------------------------------------------------------------------------
 
 
-def upload_to_public_host(video_path: Path) -> str:
+def upload_to_catbox(video_path: Path) -> str:
     """
-    Upload the video to a public file host with a valid SSL certificate and direct
-    link access for Instagram's video processing bot.
-    Tries multiple hosts in order of SSL reliability and availability.
+    Upload the video to catbox.moe and return a direct, SSL-valid public URL.
+    API: POST https://catbox.moe/user/api.php
+    Params: reqtype="fileupload", fileToUpload=@file
+    Response: Direct link string starting with https://files.catbox.moe/...
     """
-    # Host 1: file.io (Valid SSL, immediate direct download)
-    try:
-        logger.info("Attempting video upload to file.io (%s)…", video_path.name)
-        with video_path.open("rb") as fh:
-            resp = requests.post("https://file.io", files={"file": fh}, timeout=120)
-        if resp.status_code == 200:
-            data = resp.json()
-            if data.get("success") and data.get("link"):
-                url = data["link"]
-                logger.info("✓ Public video URL (file.io): %s", url)
-                return url
-    except Exception as exc:
-        logger.warning("file.io upload attempt failed: %s", exc)
+    url = "https://catbox.moe/user/api.php"
+    logger.info("Uploading video to catbox.moe (%s)…", video_path.name)
 
-    # Host 2: litterbox.catbox.moe (1-hour temporary host, direct file link)
-    try:
-        logger.info("Attempting video upload to litterbox.catbox.moe (%s)…", video_path.name)
-        with video_path.open("rb") as fh:
-            resp = requests.post(
-                "https://litterbox.catbox.moe/resources/internals/api.php",
-                data={"reqtype": "fileupload", "time": "1h"},
-                files={"fileToUpload": (video_path.name, fh, "video/mp4")},
-                timeout=120,
-            )
-        if resp.status_code == 200 and resp.text.startswith("http"):
-            url = resp.text.strip()
-            logger.info("✓ Public video URL (litterbox): %s", url)
-            return url
-    except Exception as exc:
-        logger.warning("litterbox upload attempt failed: %s", exc)
+    with video_path.open("rb") as fh:
+        resp = requests.post(
+            url,
+            data={"reqtype": "fileupload"},
+            files={"fileToUpload": (video_path.name, fh, "video/mp4")},
+            timeout=120,
+        )
 
-    # Host 3: tmpfiles.org (Fallback)
-    try:
-        logger.info("Attempting video upload to tmpfiles.org (%s)…", video_path.name)
-        with video_path.open("rb") as fh:
-            resp = requests.post(
-                "https://tmpfiles.org/api/v1/upload",
-                files={"file": (video_path.name, fh, "video/mp4")},
-                timeout=120,
-            )
-        resp.raise_for_status()
-        payload = resp.json()
-        if payload.get("status") == "success":
-            page_url: str = payload["data"]["url"]
-            direct_url = page_url.replace("tmpfiles.org/", "tmpfiles.org/dl/")
-            logger.info("✓ Public video URL (tmpfiles): %s", direct_url)
-            return direct_url
-    except Exception as exc:
-        logger.warning("tmpfiles.org upload attempt failed: %s", exc)
+    resp.raise_for_status()
+    direct_url = resp.text.strip()
 
-    raise RuntimeError("All public file upload hosts failed.")
+    if not direct_url.startswith("http"):
+        raise RuntimeError(f"catbox.moe upload failed: {direct_url}")
+
+    logger.info("✓ Public video URL (catbox.moe): %s", direct_url)
+    return direct_url
 
 
 def upload_to_tmpfiles(video_path: Path) -> str:
-    """Alias for upload_to_public_host for backwards compatibility."""
-    return upload_to_public_host(video_path)
+    """Alias for upload_to_catbox for backwards compatibility."""
+    return upload_to_catbox(video_path)
 
 
 # ---------------------------------------------------------------------------
@@ -540,8 +509,8 @@ def main() -> None:
     final_video = concatenate_segments(segment_paths)
 
     # ── Stage 3e: Upload for public URL ───────────────────────────────────
-    logger.info("=== Stage 3e: Uploading to tmpfiles.org ===")
-    public_url = upload_to_tmpfiles(final_video)
+    logger.info("=== Stage 3e: Uploading to catbox.moe ===")
+    public_url = upload_to_catbox(final_video)
 
     # ── Stage 3f: Instagram upload ────────────────────────────────────────
     logger.info("=== Stage 3f: Uploading to Instagram ===")
