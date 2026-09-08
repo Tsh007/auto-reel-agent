@@ -40,7 +40,7 @@ def _optional(name: str, default: str = "") -> str:
 GEMINI_API_KEY: str = _require("GEMINI_API_KEY")
 
 # Instagram Graph API
-IG_USER_ID: str = _require("IG_USER_ID")
+IG_USER_ID: str = _optional("IG_USER_ID", "me") or "me"
 IG_ACCESS_TOKEN: str = _require("IG_ACCESS_TOKEN")
 
 # ---------------------------------------------------------------------------
