@@ -87,7 +87,7 @@ IG_API_BASE: str = f"https://graph.facebook.com/{IG_API_VERSION}"
 # ---------------------------------------------------------------------------
 # Gemini model
 # ---------------------------------------------------------------------------
-GEMINI_MODEL: str = _optional("GEMINI_MODEL", "gemini-1.5-flash")
+GEMINI_MODEL: str = _optional("GEMINI_MODEL", "gemini-2.0-flash")
 
 # ---------------------------------------------------------------------------
 # Utility: ensure all output directories exist

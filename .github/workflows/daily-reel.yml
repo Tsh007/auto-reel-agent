@@ -37,7 +37,7 @@ jobs:
           cache: pip
 
       - name: Install Stage 1 dependencies
-        run: pip install --upgrade google-generativeai
+        run: pip install --upgrade google-genai
 
       - name: Run Stage 1 – Trend & Script Generation
         env:
