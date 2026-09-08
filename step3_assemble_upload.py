@@ -266,8 +266,9 @@ def concatenate_segments(segment_paths: list[Path], output: str = FINAL_VIDEO) -
     concat_list = Path(OUTPUT_DIR) / "concat_list.txt"
     with concat_list.open("w", encoding="utf-8") as fh:
         for p in segment_paths:
-            # FFmpeg concat list requires forward slashes even on Windows
-            fh.write(f"file '{p.as_posix()}'\n")
+            # Use absolute paths so FFmpeg doesn't resolve them relative
+            # to the concat list's own directory (which would double the prefix).
+            fh.write(f"file '{p.resolve().as_posix()}'\n")
 
     out_path = Path(output)
     cmd = [
