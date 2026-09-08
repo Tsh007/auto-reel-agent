@@ -358,6 +358,29 @@ def _ig_get(endpoint: str, params: dict[str, Any]) -> dict[str, Any]:
     return data
 
 
+def resolve_target_user_id() -> str:
+    """
+    Auto-detect the target Instagram User ID.
+    1. If IG_USER_ID is set to a valid numeric ID (not "me" or placeholders), try using it.
+    2. Otherwise, query GET /me?fields=id using access_token to get the true App-Scoped ID.
+    3. Fall back to "me" if query is unsupported.
+    """
+    if IG_USER_ID and IG_USER_ID not in ("me", "placeholder") and IG_USER_ID.isdigit():
+        return IG_USER_ID
+
+    try:
+        data = _ig_get("me", {"fields": "id,username"})
+        user_id = data.get("id")
+        username = data.get("username", "")
+        if user_id:
+            logger.info("Auto-resolved Instagram User ID: %s (username: @%s)", user_id, username)
+            return user_id
+    except Exception as exc:
+        logger.warning("Could not auto-resolve ID from GET /me: %s. Falling back to 'me'.", exc)
+
+    return "me"
+
+
 def upload_reel_to_instagram(
     video_url: str,
     caption: str,
@@ -372,17 +395,33 @@ def upload_reel_to_instagram(
 
     Returns the published media ID.
     """
-    logger.info("Creating Instagram Reel media container…")
-    container = _ig_post(
-        f"{IG_USER_ID}/media",
-        {
-            "media_type": "REELS",
-            "video_url": video_url,
-            "caption": caption,
-            "share_to_feed": "true",
-        },
-    )
-    container_id: str = container["id"]
+    target_id = resolve_target_user_id()
+    logger.info("Creating Instagram Reel media container (target: %s)…", target_id)
+
+    container_id: str | None = None
+    for attempt in range(1, 4):
+        try:
+            container = _ig_post(
+                f"{target_id}/media",
+                {
+                    "media_type": "REELS",
+                    "video_url": video_url,
+                    "caption": caption,
+                    "share_to_feed": "true",
+                },
+            )
+            container_id = container["id"]
+            break
+        except Exception as exc:
+            logger.warning("Container creation attempt %d/3 failed: %s", attempt, exc)
+            if ("33" in str(exc) or "100" in str(exc)) and target_id != "me":
+                logger.info("Retrying container creation using endpoint target 'me'…")
+                target_id = "me"
+            if attempt == 3:
+                raise
+            time.sleep(3)
+
+    assert container_id is not None
     logger.info("Container created: %s", container_id)
 
     # Poll for processing completion
@@ -413,7 +452,7 @@ def upload_reel_to_instagram(
     # Publish
     logger.info("Publishing Reel…")
     publish_resp = _ig_post(
-        f"{IG_USER_ID}/media_publish",
+        f"{target_id}/media_publish",
         {"creation_id": container_id},
     )
     media_id: str = publish_resp["id"]
