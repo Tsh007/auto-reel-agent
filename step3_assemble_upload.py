@@ -295,46 +295,51 @@ def concatenate_segments(segment_paths: list[Path], output: str = FINAL_VIDEO) -
 # ---------------------------------------------------------------------------
 
 
-def upload_to_catbox(video_path: Path) -> str:
+def upload_to_github_release(video_path: Path) -> str:
     """
-    Upload the video to catbox.moe and return a direct, SSL-valid public URL.
-    API: POST https://catbox.moe/user/api.php
-    Params: reqtype="fileupload", fileToUpload=@file
-    Response: Direct link string starting with https://files.catbox.moe/...
+    Upload video asset to GitHub Release using gh CLI.
+    Uses GITHUB_TOKEN automatically provided by GitHub Actions.
+    Returns direct download URL from github.com releases.
     """
-    url = "https://catbox.moe/user/api.php"
-    logger.info("Uploading video to catbox.moe (%s)…", video_path.name)
+    repo = os.environ.get("GITHUB_REPOSITORY")
+    token = os.environ.get("GITHUB_TOKEN")
 
-    headers = {
-        "User-Agent": (
-            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
-            "(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
-        ),
-        "Expect": "",
-    }
-
-    with video_path.open("rb") as fh:
-        resp = requests.post(
-            url,
-            data={"reqtype": "fileupload"},
-            files={"fileToUpload": (video_path.name, fh, "video/mp4")},
-            headers=headers,
-            timeout=120,
+    if not repo or not token:
+        raise RuntimeError(
+            "GITHUB_REPOSITORY or GITHUB_TOKEN environment variable is missing. "
+            "Ensure Stage 3 runs on GitHub Actions with GITHUB_TOKEN passed in env."
         )
 
-    resp.raise_for_status()
-    direct_url = resp.text.strip()
+    tag = "media-assets"
+    logger.info("Uploading video to GitHub Release asset on %s (%s)…", repo, tag)
 
-    if not direct_url.startswith("http"):
-        raise RuntimeError(f"catbox.moe upload failed: {direct_url}")
+    # 1. Ensure the release tag 'media-assets' exists
+    cmd_create = [
+        "gh", "release", "create", tag,
+        "--title", "Media Assets",
+        "--notes", "Automated video asset hosting for Instagram Reels",
+        "--repo", repo,
+    ]
+    subprocess.run(cmd_create, capture_output=True, text=True)  # ok if release already exists
 
-    logger.info("✓ Public video URL (catbox.moe): %s", direct_url)
+    # 2. Upload/overwrite video file
+    cmd_upload = [
+        "gh", "release", "upload", tag, str(video_path),
+        "--clobber",
+        "--repo", repo,
+    ]
+    result = subprocess.run(cmd_upload, capture_output=True, text=True)
+    if result.returncode != 0:
+        raise RuntimeError(f"gh release upload failed: {result.stderr}")
+
+    direct_url = f"https://github.com/{repo}/releases/download/{tag}/{video_path.name}"
+    logger.info("✓ Public video URL (GitHub Release): %s", direct_url)
     return direct_url
 
 
 def upload_to_tmpfiles(video_path: Path) -> str:
-    """Alias for upload_to_catbox for backwards compatibility."""
-    return upload_to_catbox(video_path)
+    """Alias for upload_to_github_release for backwards compatibility."""
+    return upload_to_github_release(video_path)
 
 
 # ---------------------------------------------------------------------------
@@ -518,8 +523,8 @@ def main() -> None:
     final_video = concatenate_segments(segment_paths)
 
     # ── Stage 3e: Upload for public URL ───────────────────────────────────
-    logger.info("=== Stage 3e: Uploading to catbox.moe ===")
-    public_url = upload_to_catbox(final_video)
+    logger.info("=== Stage 3e: Uploading video asset to GitHub Release ===")
+    public_url = upload_to_github_release(final_video)
 
     # ── Stage 3f: Instagram upload ────────────────────────────────────────
     logger.info("=== Stage 3f: Uploading to Instagram ===")

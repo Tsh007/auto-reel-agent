@@ -103,6 +103,8 @@ jobs:
     name: "Stage 3 · Video Assembly & Instagram Upload"
     runs-on: ubuntu-latest
     needs: generate-images
+    permissions:
+      contents: write
 
     steps:
       - name: Checkout repository
@@ -133,6 +135,7 @@ jobs:
           GEMINI_API_KEY: "placeholder"
           IG_USER_ID: ${{ secrets.IG_USER_ID }}
           IG_ACCESS_TOKEN: ${{ secrets.IG_ACCESS_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: python step3_assemble_upload.py
 
       - name: Upload final reel artifact (for inspection)
