@@ -305,11 +305,20 @@ def upload_to_catbox(video_path: Path) -> str:
     url = "https://catbox.moe/user/api.php"
     logger.info("Uploading video to catbox.moe (%s)…", video_path.name)
 
+    headers = {
+        "User-Agent": (
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+            "(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+        ),
+        "Expect": "",
+    }
+
     with video_path.open("rb") as fh:
         resp = requests.post(
             url,
             data={"reqtype": "fileupload"},
             files={"fileToUpload": (video_path.name, fh, "video/mp4")},
+            headers=headers,
             timeout=120,
         )
 
