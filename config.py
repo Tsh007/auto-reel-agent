@@ -43,6 +43,11 @@ GEMINI_API_KEY: str = _require("GEMINI_API_KEY")
 IG_USER_ID: str = _optional("IG_USER_ID", "me") or "me"
 IG_ACCESS_TOKEN: str = _require("IG_ACCESS_TOKEN")
 
+# YouTube Data API v3
+YOUTUBE_CLIENT_ID: str = _optional("YOUTUBE_CLIENT_ID")
+YOUTUBE_CLIENT_SECRET: str = _optional("YOUTUBE_CLIENT_SECRET")
+YOUTUBE_REFRESH_TOKEN: str = _optional("YOUTUBE_REFRESH_TOKEN")
+
 # ---------------------------------------------------------------------------
 # Paths & filenames
 # ---------------------------------------------------------------------------
