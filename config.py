@@ -75,7 +75,7 @@ POLLINATIONS_PARAMS: dict = {
     "width": VIDEO_WIDTH,
     "height": VIDEO_HEIGHT,
     "nologo": "true",
-    "enhance": "true",
+    "enhance": "false",
 }
 
 # ---------------------------------------------------------------------------

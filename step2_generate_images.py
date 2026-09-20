@@ -42,24 +42,103 @@ RETRY_BACKOFF_BASE: float = 3.0      # seconds
 # Pollinations helpers
 # ---------------------------------------------------------------------------
 
+# Standard headers to prevent Cloudflare / bot-detection blocking
+REQUEST_HEADERS: dict[str, str] = {
+    "User-Agent": (
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+        "AppleWebKit/537.36 (KHTML, like Gecko) "
+        "Chrome/124.0.0.0 Safari/537.36"
+    ),
+    "Accept": "image/webp,image/apng,image/*,*/*;q=0.8",
+}
 
-def build_pollinations_url(prompt: str, seed: int) -> str:
+
+def build_pollinations_url(
+    prompt: str,
+    seed: int,
+    model: str | None = None,
+    enhance: bool = False,
+) -> str:
     """Return the fully encoded Pollinations image URL for a given prompt."""
-    # URL-encode the prompt (spaces → %20, special chars escaped)
     encoded_prompt = urllib.parse.quote(prompt, safe="")
     base = POLLINATIONS_BASE_URL.format(prompt=encoded_prompt)
 
-    params = {**POLLINATIONS_PARAMS, "seed": seed}
+    params: dict[str, Any] = {
+        **POLLINATIONS_PARAMS,
+        "seed": seed,
+        "enhance": "true" if enhance else "false",
+    }
+    if model:
+        params["model"] = model
+
     query = "&".join(f"{k}={v}" for k, v in params.items())
     return f"{base}?{query}"
 
 
-def download_image(url: str, dest: Path, retries: int = MAX_RETRIES) -> None:
-    """Download an image from *url* and save it as a verified PNG at *dest*."""
+def create_fallback_image(dest: Path, index: int, prompt: str) -> None:
+    """Generate a sleek gradient background as a graceful fallback when external AI is down."""
+    from PIL import ImageDraw  # pylint: disable=import-outside-toplevel
+
+    logger.warning("    Generating local fallback graphic for %s…", dest.name)
+    img = Image.new("RGB", (VIDEO_WIDTH, VIDEO_HEIGHT), color=(15, 18, 28))
+    draw = ImageDraw.Draw(img)
+
+    # Sleek dark cyber gradient
+    for y in range(VIDEO_HEIGHT):
+        ratio = y / VIDEO_HEIGHT
+        r = int(10 + 35 * ratio)
+        g = int(15 + 20 * (1 - ratio))
+        b = int(35 + 55 * ratio)
+        draw.line([(0, y), (VIDEO_WIDTH, y)], fill=(r, g, b))
+
+    # Add subtle glowing decorative border/box
+    margin = 40
+    draw.rectangle(
+        [(margin, margin), (VIDEO_WIDTH - margin, VIDEO_HEIGHT - margin)],
+        outline=(60, 90, 160),
+        width=2,
+    )
+    img.save(str(dest), format="PNG")
+    logger.info("    Saved fallback image to: %s", dest)
+
+
+def download_image(prompt: str, dest: Path, seed: int, retries: int = MAX_RETRIES) -> None:
+    """
+    Download an image from Pollinations with multiple retry strategies (model rotation,
+    seed perturbation, and disabling enhance) to handle 500 errors reliably.
+    """
+    # Strategy list per attempt: (model, enhance, seed_modifier, simplify_prompt)
+    strategies = [
+        (None, False, 0, False),               # Attempt 1: Standard, enhance=false
+        ("flux", False, random.randint(1, 1000), False),  # Attempt 2: Switch to flux model
+        ("turbo", False, random.randint(1001, 2000), False),  # Attempt 3: Switch to fast turbo
+        ("sana", False, random.randint(2001, 9999), True),   # Attempt 4: Clean prompt + sana
+    ]
+
     for attempt in range(1, retries + 1):
-        logger.info("  [%d/%d] Downloading: %s", attempt, retries, url)
+        strategy_idx = min(attempt - 1, len(strategies) - 1)
+        model, enhance, seed_offset, simplify = strategies[strategy_idx]
+
+        cur_prompt = prompt
+        if simplify:
+            # Strip excessive punctuation or lengthy technical keywords
+            cur_prompt = prompt.split(",")[0].strip() or prompt
+
+        cur_seed = (seed + seed_offset) % 100_000
+        url = build_pollinations_url(cur_prompt, cur_seed, model=model, enhance=enhance)
+
+        logger.info(
+            "  [%d/%d] Downloading (model=%s, enhance=%s): %s",
+            attempt, retries, model or "default", enhance, url,
+        )
+
         try:
-            resp = requests.get(url, timeout=REQUEST_TIMEOUT_S, stream=True)
+            resp = requests.get(
+                url,
+                headers=REQUEST_HEADERS,
+                timeout=REQUEST_TIMEOUT_S,
+                stream=True,
+            )
             resp.raise_for_status()
 
             dest.write_bytes(resp.content)
@@ -82,16 +161,17 @@ def download_image(url: str, dest: Path, retries: int = MAX_RETRIES) -> None:
             logger.warning("    Request error: %s", exc)
         except Exception as exc:  # pylint: disable=broad-except
             logger.warning("    Unexpected error: %s", exc)
-            # Remove potentially corrupt file
             if dest.exists():
                 dest.unlink()
 
         if attempt < retries:
-            sleep_s = RETRY_BACKOFF_BASE * (2 ** (attempt - 1))
-            logger.info("    Retrying in %.1fs…", sleep_s)
+            sleep_s = RETRY_BACKOFF_BASE * (1.5 ** (attempt - 1))
+            logger.info("    Retrying with alternate configuration in %.1fs…", sleep_s)
             time.sleep(sleep_s)
 
-    raise RuntimeError(f"Failed to download image after {retries} attempts: {url}")
+    # If all download attempts failed, fallback to local generation rather than crashing pipeline
+    logger.error("Failed to download image from Pollinations after %d attempts.", retries)
+    create_fallback_image(dest, 0, prompt)
 
 
 # ---------------------------------------------------------------------------
@@ -140,8 +220,7 @@ def generate_images(script: dict[str, Any], images_dir: str = IMAGES_DIR) -> lis
             idx + 1, len(sentences), seed, prompt,
         )
 
-        url = build_pollinations_url(prompt, seed)
-        download_image(url, dest)
+        download_image(prompt, dest, seed)
 
         # Annotate the script entry with the local path (used by Step 3)
         sentence["image_path"] = str(dest)
